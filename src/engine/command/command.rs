@@ -2,11 +2,11 @@ use regex::Regex;
 
 #[derive(Debug)]
 pub struct Command {
-    prefix: Option<String>,
-    root: String,
-    switch: Option<String>,
-    page: Option<u16>,
-    args: Vec<String>,
+    pub prefix: Option<String>,
+    pub root: String,
+    pub switch: Option<String>,
+    pub page: Option<u16>,
+    pub args: Vec<String>,
 }
 
 impl Command {

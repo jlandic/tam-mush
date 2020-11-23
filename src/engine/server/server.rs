@@ -8,14 +8,18 @@ use tokio_util::codec::{Framed, LinesCodec, LinesCodecError};
 
 use futures::SinkExt;
 use std::collections::HashMap;
+use std::env;
 use std::error::Error;
+use std::fs::File;
 use std::io;
+use std::io::prelude::*;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use crate::command::Command;
+use crate::engine::commands::LoginHandler;
+use crate::engine::{Command, CommandHandler};
 
 type Rx = mpsc::UnboundedReceiver<String>;
 type Tx = mpsc::UnboundedSender<String>;
@@ -89,10 +93,15 @@ impl Server {
         let state = Arc::new(Mutex::new(SharedState::new()));
         let listener = TcpListener::bind(binding).await?;
 
-        let der = include_bytes!("identity.p12");
-        let p12_password = std::env::var("P12_PASSWORD")?;
-        let cert = Identity::from_pkcs12(der, &p12_password)?;
+        let mut der_file = File::open("identity.p12")?;
+        let mut der = Vec::new();
+        der_file.read_to_end(&mut der)?;
+
+        let p12_password = env::var("P12_PASSWORD").unwrap_or("".to_string());
+        let cert = Identity::from_pkcs12(&der, &p12_password)?;
         let tls_acceptor = TlsAcceptor::from(native_tls::TlsAcceptor::builder(cert).build()?);
+
+        println!("Listening on {}", binding);
 
         loop {
             let (stream, addr) = listener.accept().await?;
@@ -100,7 +109,7 @@ impl Server {
             let tls_acceptor = tls_acceptor.clone();
 
             tokio::spawn(async move {
-                if let Err(e) = Self::process_client(state, stream, addr, tls_acceptor).await {
+                if let Err(e) = Server::process_client(state, stream, addr, tls_acceptor).await {
                     eprintln!("{:?}", e);
                 }
             });
@@ -125,12 +134,26 @@ impl Server {
                 Ok(Message::Received(msg)) => {
                     let response = match Command::parse(&msg) {
                         Ok(cmd) => {
-                            format!("{:?}", cmd)
+                            let mut command_handlers = Vec::new();
+                            command_handlers.push(LoginHandler {});
+
+                            match command_handlers
+                                .iter()
+                                .find(|handler| handler.can_respond_to(&cmd))
+                            {
+                                Some(handler) => match handler.handle(&cmd, None) {
+                                    Ok(_) => Some("Successfully logged in!".to_string()),
+                                    Err(e) => Some(e),
+                                },
+                                None => Some("No handler found for your command".to_string()),
+                            }
                         }
-                        Err(e) => e,
+                        Err(e) => Some(e),
                     };
 
-                    client.lines.send(&response).await?;
+                    if let Some(response) = response {
+                        client.lines.send(&response).await?;
+                    }
                 }
                 Ok(Message::Response(msg)) => {
                     client.lines.send(&msg).await?;

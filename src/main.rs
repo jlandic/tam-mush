@@ -4,14 +4,13 @@ extern crate diesel;
 extern crate lazy_static;
 
 use dotenv::dotenv;
+use std::env;
 
-mod command;
-mod db;
+mod engine;
 mod models;
 mod schema;
-mod server;
 
-use server::Server;
+use crate::engine::Server;
 
 const BINDING: &str = ":::8787";
 
@@ -19,7 +18,7 @@ const BINDING: &str = ":::8787";
 async fn main() {
     dotenv().ok();
 
-    let result = Server::start(BINDING).await;
+    let result = Server::start(&env::var("BINDING").unwrap_or(BINDING.to_string())).await;
     if let Err(e) = result {
         eprintln!("{:?}", e);
     }

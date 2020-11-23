@@ -1,3 +1,4 @@
+use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::NaiveDateTime;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
@@ -13,6 +14,12 @@ pub struct User {
     pub created_at: NaiveDateTime,
 }
 
+impl User {
+    pub fn verify_password(&self, password: &str) -> bool {
+        verify(password, &self.password_encrypted).unwrap_or(false)
+    }
+}
+
 #[derive(Insertable)]
 #[table_name = "users"]
 pub struct NewUser<'a> {
@@ -20,14 +27,29 @@ pub struct NewUser<'a> {
     pub password_encrypted: &'a str,
 }
 
-pub fn create_user<'a>(conn: &PgConnection, username: &'a str, password: &'a str) -> User {
+pub fn create_user<'a>(
+    conn: &PgConnection,
+    username: &'a str,
+    password: &'a str,
+) -> Result<User, String> {
+    let password_encrypted = &hash_password(password)?;
     let new_user = NewUser {
         username,
-        password_encrypted: password,
+        password_encrypted,
     };
 
-    diesel::insert_into(users::table)
+    match diesel::insert_into(users::table)
         .values(&new_user)
         .get_result(conn)
-        .expect("Error saving new user")
+    {
+        Ok(user) => Ok(user),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+fn hash_password(password: &str) -> Result<String, String> {
+    match hash(password, DEFAULT_COST) {
+        Ok(encrypted) => Ok(encrypted),
+        Err(e) => Err(e.to_string()),
+    }
 }
