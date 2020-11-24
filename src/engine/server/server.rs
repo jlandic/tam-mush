@@ -18,7 +18,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use crate::engine::commands::LoginHandler;
+use crate::engine::commands::{LoginHandler, RegisterHandler};
 use crate::engine::{Command, CommandHandler};
 
 type Rx = mpsc::UnboundedReceiver<String>;
@@ -134,8 +134,9 @@ impl Server {
                 Ok(Message::Received(msg)) => {
                     let response = match Command::parse(&msg) {
                         Ok(cmd) => {
-                            let mut command_handlers = Vec::new();
-                            command_handlers.push(LoginHandler {});
+                            let mut command_handlers: Vec<Box<dyn CommandHandler>> = Vec::new();
+                            command_handlers.push(Box::new(LoginHandler {}));
+                            command_handlers.push(Box::new(RegisterHandler {}));
 
                             match command_handlers
                                 .iter()
